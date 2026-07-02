@@ -47,15 +47,15 @@ httpServer := http.Server{
 	Handler:	mux,
 }
 
-mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(200)
 	w.Write([]byte("OK"))
 })
 
-mux.HandleFunc("/metrics", apiCfg.handlerMetrics)
+mux.HandleFunc("GET /metrics", apiCfg.handlerMetrics)
 
-mux.HandleFunc("/reset", apiCfg.handlerReset)
+mux.HandleFunc("POST /reset", apiCfg.handlerReset)
 
 mux.Handle("/app/", http.StripPrefix("/app", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir(".")))))
 
