@@ -28,7 +28,7 @@ type errorResponse struct {
 }
 
 type successResponse struct {
-	Valid bool `json:"valid"`
+	CleanedBody string `json:"cleaned_body"`
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
@@ -85,8 +85,9 @@ func (cfg *apiConfig) handlerValidate(w http.ResponseWriter, r *http.Request) {
 		w.Write(dat)
 		return
 	}
+	cleanedBody := profaneReplace(params.Body)
 	log.Print("Chirp Success")
-	succResp := successResponse{Valid: true}
+	succResp := successResponse{CleanedBody: cleanedBody}
 	dat, err := json.Marshal(succResp)
 	if err != nil {
 		log.Printf("Error marshaling data: %s", err)
