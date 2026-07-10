@@ -12,10 +12,12 @@ import (
 	"os"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	_ "github.com/lib/pq"
 	"github.com/joho/godotenv"
 	"github.com/adrake333/chirpy/internal/database"
+	"github.com/google/uuid"
 
 )
 
@@ -75,11 +77,6 @@ func (cfg *apiConfig) handlerMetrics(w http.ResponseWriter, r *http.Request) {
 			<p>Chirpy has been visited %d times!</p>
 		</body>
 	</html>`, cfg.fileserverHits.Load())))
-}
-
-func (cfg *apiConfig) handlerReset(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	cfg.fileserverHits.Store(0)
 }
 
 func (cfg *apiConfig) handlerValidate(w http.ResponseWriter, r *http.Request) {
@@ -188,7 +185,15 @@ func (cfg *apiConfig) handlerReset(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(403)
 		return
 	}
-	cfg.dbQueries.ResetUsers(r.Context())
+	err := cfg.dbQueries.ResetUsers(r.Context())
+	if err != nil {
+		log.Printf("Error resetting users: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	cfg.fileserverHits.Store(0)
+	w.WriteHeader(200)
+	return
 }
 
 
