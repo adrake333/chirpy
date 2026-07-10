@@ -4,12 +4,19 @@ package main
 
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync/atomic"
+
+	_ "github.com/lib/pq"
+	"github.com/joho/godotenv"
+	"github.com/adrake333/chirpy/internal/database"
+
 )
 
 
@@ -17,6 +24,7 @@ import (
 
 type apiConfig struct {
 	fileserverHits		atomic.Int32
+	dbQueries		*database.Queries
 }
 
 type requestBody struct {
@@ -29,6 +37,13 @@ type errorResponse struct {
 
 type successResponse struct {
 	CleanedBody string `json:"cleaned_body"`
+}
+
+type User sgtruct {
+	ID		uuid.UUID	`json:"id"`
+	CreatedAt	time.Time	`json:"created_at"`
+	UpdatedAt	time.Time	`json:"updated_at"`
+	Email		string		`json:"email"`
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
@@ -115,11 +130,33 @@ func profaneReplace(words string) string {
 	return cleaned
 }
 
+func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r http.Request) {
+}
+
 
 
 
 func main() {
-apiCfg := apiConfig{}
+
+err := godotenv.Load()
+if err != nil {
+	log.Printf("Error: %s", err)
+	return
+}
+
+dbURL := os.Getenv("DB_URL")
+
+db, err := sql.Open("postgres", dbURL)
+if err != nil {
+	log.Printf("Error: %s", err)
+	return
+}
+
+dbQueries := database.New(db)
+
+apiCfg := apiConfig{
+	dbQueries:	dbQueries,
+}
 
 mux := http.NewServeMux()
 
@@ -139,6 +176,8 @@ mux.HandleFunc("GET /admin/metrics", apiCfg.handlerMetrics)
 mux.HandleFunc("POST /admin/reset", apiCfg.handlerReset)
 
 mux.HandleFunc("POST /api/validate_chirp", apiCfg.handlerValidate)
+
+mux.HandleFunc("POST /api/users", apiCfg.handlerCreateUser)
 
 mux.Handle("/app/", http.StripPrefix("/app", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir(".")))))
 
