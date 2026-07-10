@@ -25,6 +25,7 @@ import (
 type apiConfig struct {
 	fileserverHits		atomic.Int32
 	dbQueries		*database.Queries
+	platform		string
 }
 
 type requestBody struct {
@@ -181,6 +182,15 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) 
 	return
 }
 
+func (cfg *apiConfig) handlerReset(w http.ResponseWriter, r *http.Request) {
+	if cfg.platform != "dev" {
+		log.Print("Forbidden")
+		w.WriteHeader(403)
+		return
+	}
+	cfg.dbQueries.ResetUsers(r.Context())
+}
+
 
 
 
@@ -194,6 +204,8 @@ if err != nil {
 
 dbURL := os.Getenv("DB_URL")
 
+platform := os.Getenv("PLATFORM")
+
 db, err := sql.Open("postgres", dbURL)
 if err != nil {
 	log.Printf("Error: %s", err)
@@ -204,6 +216,7 @@ dbQueries := database.New(db)
 
 apiCfg := apiConfig{
 	dbQueries:	dbQueries,
+	platform:	platform,
 }
 
 mux := http.NewServeMux()
