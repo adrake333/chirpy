@@ -39,11 +39,24 @@ type successResponse struct {
 	CleanedBody string `json:"cleaned_body"`
 }
 
-type User sgtruct {
+type User struct {
 	ID		uuid.UUID	`json:"id"`
 	CreatedAt	time.Time	`json:"created_at"`
 	UpdatedAt	time.Time	`json:"updated_at"`
 	Email		string		`json:"email"`
+}
+
+type userRequest struct {
+	Email	string	`json:"email"`
+}
+
+func toUser(dbU database.User) User {
+	return User{
+		ID:		dbU.ID,
+		CreatedAt:	dbU.CreatedAt,
+		UpdatedAt:	dbU.UpdatedAt,
+		Email:		dbU.Email,
+	}
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
@@ -130,7 +143,42 @@ func profaneReplace(words string) string {
 	return cleaned
 }
 
-func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r http.Request) {
+func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	req := userRequest{}
+	err := decoder.Decode(&req)
+	if err != nil {
+		log.Printf("Error decoding user: %s", err)
+		errResp := errorResponse{Error: "Something went wrong"}
+		dat, err := json.Marshal(errResp)
+		if err != nil {
+			log.Printf("Error marshaling data: %s", err)
+			w.WriteHeader(500)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(400)
+		w.Write(dat)
+		return
+	}
+	user, err := cfg.dbQueries.CreateUser(r.Context(), req.Email)
+	if err != nil {
+		log.Printf("Error creating user: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	newUser := toUser(user)
+	log.Print("Create User Success")
+	dat, err := json.Marshal(newUser)
+	if err != nil {
+		log.Printf("Error marshaling user: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	w.Write(dat)
+	return
 }
 
 
