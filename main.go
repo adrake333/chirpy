@@ -6,6 +6,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -53,6 +54,24 @@ type userRequest struct {
 	Email	string	`json:"email"`
 }
 
+type chirpRequest struct {
+	Body	string		`json:"body"`
+	UserID	uuid.UUID	`json:"user_id"`
+}
+
+func respondWithError(w http.ResponseWriter, code int, msg string) {
+	errResp := errorResponse{Error: msg}
+	dat, err := json.Marshal(errResp)
+	if err != nil {
+		log.Printf("Error marshaling data: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	w.Write(dat)
+}
+
 func toUser(dbU database.User) User {
 	return User{
 		ID:		dbU.ID,
@@ -79,51 +98,61 @@ func (cfg *apiConfig) handlerMetrics(w http.ResponseWriter, r *http.Request) {
 	</html>`, cfg.fileserverHits.Load())))
 }
 
-func (cfg *apiConfig) handlerValidate(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
-	params := requestBody{}
-	err:= decoder.Decode(&params)
+	params := chirpRequest{}
+	err := decoder.Decode(&params)
 	if err != nil {
 		log.Printf("Error decoding parameters: %s", err)
-		errResp := errorResponse{Error: "Something went wrong"}
-		dat, err := json.Marshal(errResp)
-		if err != nil {
-			log.Printf("Error marshaling data: %s", err)
-			w.WriteHeader(500)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(400)
-		w.Write(dat)
+		respondWithError(w, 400, "Something went wrong")
 		return
 	}
-	if len(params.Body) > 140 {
-		log.Print("Chirp is too long")
-		errResp := errorResponse{Error: "Chirp is too long"}
-		dat, err := json.Marshal(errResp)
-		if err != nil {
-			log.Printf("Error marshaling data: %s", err)
-			w.WriteHeader(500)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(400)
-		w.Write(dat)
-		return
-	}
-	cleanedBody := profaneReplace(params.Body)
-	log.Print("Chirp Success")
-	succResp := successResponse{CleanedBody: cleanedBody}
-	dat, err := json.Marshal(succResp)
+	cleanedBody, err := validateChirp(params.Body)
 	if err != nil {
-		log.Printf("Error marshaling data: %s", err)
-		w.WriteHeader(500)
+		log.Printf("Error validating chirp: %s", err)
+		respondWithError(w, 400, "Chirp is too long")
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	w.Write(dat)
-	return
+	//CALL DATABASE TO STORE CHIRP
+	//IF FAILS, RESPOND WITH AN ERROR (500)
+	//IF SUCCESS, RESPOND WITH 201 AND FULL CHIRP AS JSON
+}
+
+//func (cfg *apiConfig) handlerValidate(w http.ResponseWriter, r *http.Request) {
+//	decoder := json.NewDecoder(r.Body)
+//	params := requestBody{}
+//	err:= decoder.Decode(&params)
+//	if err != nil {
+//		log.Printf("Error decoding parameters: %s", err)
+//		respondWithError(w, 400, "Something went wrong")
+//		return
+//	}
+//	if len(params.Body) > 140 {
+//		log.Print("Chirp is too long")
+//		respondWithError(w, 400, "Chirp is too long")
+//		return
+//	}
+//	cleanedBody := profaneReplace(params.Body)
+//	log.Print("Chirp Success")
+//	succResp := successResponse{CleanedBody: cleanedBody}
+//	dat, err := json.Marshal(succResp)
+//	if err != nil {
+//		log.Printf("Error marshaling data: %s", err)
+//		w.WriteHeader(500)
+//		return
+//	}
+//	w.Header().Set("Content-Type", "application/json")
+//	w.WriteHeader(200)
+//	w.Write(dat)
+//	return
+//}
+
+func validateChirp(body string) (string, error) {
+	if len(body) > 140 {
+		return "", errors.New("Chirp is too long")
+	}
+	cleanedBody := profaneReplace(body)
+	return cleanedBody, nil
 }
 
 func profaneReplace(words string) string {
@@ -241,9 +270,9 @@ mux.HandleFunc("GET /admin/metrics", apiCfg.handlerMetrics)
 
 mux.HandleFunc("POST /admin/reset", apiCfg.handlerReset)
 
-mux.HandleFunc("POST /api/validate_chirp", apiCfg.handlerValidate)
-
 mux.HandleFunc("POST /api/users", apiCfg.handlerCreateUser)
+
+mux.HandleFunc("POST /api/chirps", apiCfg.handlerCreateChirp)
 
 mux.Handle("/app/", http.StripPrefix("/app", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir(".")))))
 
