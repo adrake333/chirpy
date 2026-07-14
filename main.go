@@ -262,7 +262,22 @@ func (cfg *apiConfig) handlerGetOneChirp(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, 400, "Failed to parse uuid")
 		return
 	}
-	//SQL Query
+	dbChirp, err := cfg.dbQueries.GetOneChirp(r.Context(), chirpUUID)
+	if err != nil {
+		log.Printf("Error finding chirp: %s", err)
+		respondWithError(w, 404, "Failed to find chirp")
+		return
+	}
+	chirp := toChirp(dbChirp)
+	dat, err := json.Marshal(chirp)
+	if err != nil {
+		log.Printf("Error marshaling chirp: %s", err)
+		respondWithError(w, 500, "Failed to marshal chirp")
+		return
+	}
+	w.WriteHeader(200)
+	w.Write(dat)
+	return
 }
 
 
