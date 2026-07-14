@@ -196,7 +196,15 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) 
 		w.Write(dat)
 		return
 	}
-	user, err := cfg.dbQueries.CreateUser(r.Context(), req.Email)
+	hashPass, err := auth.HashPassword(req.Password)
+	if err != nil {
+		log.Printf("Error hashing password: %s", err)
+		return
+	}
+	user, err := cfg.dbQueries.CreateUser(r.Context(), database.CreateUserParams{
+		HashedPassword: hashPass,
+		Email: req.Email,
+	})
 	if err != nil {
 		log.Printf("Error creating user: %s", err)
 		w.WriteHeader(500)
@@ -328,6 +336,8 @@ mux.HandleFunc("GET /admin/metrics", apiCfg.handlerMetrics)
 mux.HandleFunc("POST /admin/reset", apiCfg.handlerReset)
 
 mux.HandleFunc("POST /api/users", apiCfg.handlerCreateUser)
+
+mux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
 
 mux.HandleFunc("POST /api/chirps", apiCfg.handlerCreateChirp)
 
