@@ -254,6 +254,17 @@ func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+func (cfg *apiConfig) handlerGetOneChirp(w http.ResponseWriter, r *http.Request) {
+	idString := r.PathValue("chirpID")
+	chirpUUID, err := uuid.Parse(idString)
+	if err != nil {
+		log.Printf("Error parsing chirp uuid: %s", err)
+		respondWithError(w, 400, "Failed to parse uuid")
+		return
+	}
+	//SQL Query
+}
+
 
 
 
@@ -304,6 +315,8 @@ mux.HandleFunc("POST /api/users", apiCfg.handlerCreateUser)
 mux.HandleFunc("POST /api/chirps", apiCfg.handlerCreateChirp)
 
 mux.HandleFunc("GET /api/chirps", apiCfg.handlerGetChirps)
+
+mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.handlerGetOneChirp)
 
 mux.Handle("/app/", http.StripPrefix("/app", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir(".")))))
 
