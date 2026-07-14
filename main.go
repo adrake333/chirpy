@@ -50,6 +50,14 @@ type User struct {
 	Email		string		`json:"email"`
 }
 
+type Chirp struct {
+	ID		uuid.UUID	`json:"id"`
+	CreatedAt	time.Time	`json:"created_at"`
+	UpdatedAt	time.Time	`json:"updated_at"`
+	Body		string		`json:"body"`
+	UserID		uuid.UUID	`json:"user_id"`
+}
+
 type userRequest struct {
 	Email	string	`json:"email"`
 }
@@ -78,6 +86,16 @@ func toUser(dbU database.User) User {
 		CreatedAt:	dbU.CreatedAt,
 		UpdatedAt:	dbU.UpdatedAt,
 		Email:		dbU.Email,
+	}
+}
+
+func toChirp(dbC database.Chirp) Chirp {
+	return Chirp{
+		ID:		dbC.ID,
+		CreatedAt:	dbC.CreatedAt,
+		UpdatedAt:	dbC.UpdatedAt,
+		Body:		dbC.Body,
+		UserID:		dbC.UserID,
 	}
 }
 
@@ -113,39 +131,27 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, 400, "Chirp is too long")
 		return
 	}
-	//CALL DATABASE TO STORE CHIRP
-	//IF FAILS, RESPOND WITH AN ERROR (500)
-	//IF SUCCESS, RESPOND WITH 201 AND FULL CHIRP AS JSON
+	chirp, err := cfg.dbQueries.CreateChirp(r.Context(), database.CreateChirpParams{
+		Body: cleanedBody,
+		UserID: params.UserID,
+	})
+	if err != nil {
+		log.Printf("Error storing chirp: %s", err)
+		respondWithError(w, 500, "Chirp failed to store in database")
+		return
+	}
+	newChirp := toChirp(chirp)
+	dat, err := json.Marshal(newChirp)
+	if err != nil {
+		log.Printf("Error marshaling chirp: %s", err)
+		respondWithError(w, 500, "Error marshaling chirp")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	w.Write(dat)
+	return
 }
-
-//func (cfg *apiConfig) handlerValidate(w http.ResponseWriter, r *http.Request) {
-//	decoder := json.NewDecoder(r.Body)
-//	params := requestBody{}
-//	err:= decoder.Decode(&params)
-//	if err != nil {
-//		log.Printf("Error decoding parameters: %s", err)
-//		respondWithError(w, 400, "Something went wrong")
-//		return
-//	}
-//	if len(params.Body) > 140 {
-//		log.Print("Chirp is too long")
-//		respondWithError(w, 400, "Chirp is too long")
-//		return
-//	}
-//	cleanedBody := profaneReplace(params.Body)
-//	log.Print("Chirp Success")
-//	succResp := successResponse{CleanedBody: cleanedBody}
-//	dat, err := json.Marshal(succResp)
-//	if err != nil {
-//		log.Printf("Error marshaling data: %s", err)
-//		w.WriteHeader(500)
-//		return
-//	}
-//	w.Header().Set("Content-Type", "application/json")
-//	w.WriteHeader(200)
-//	w.Write(dat)
-//	return
-//}
 
 func validateChirp(body string) (string, error) {
 	if len(body) > 140 {
@@ -225,6 +231,29 @@ func (cfg *apiConfig) handlerReset(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
+	dbchirps, err := cfg.dbQueries.GetChirps(r.Context())
+	var chirps []Chirp
+	if err != nil {
+		log.Printf("Error getting chirps: %s", err)
+		respondWithError(w, 500, "Failed to retrieve chirps")
+		return
+	}
+	for _, dbchirp := range dbchirps {
+		chirp := toChirp(dbchirp)
+		chirps = append(chirps, chirp)
+	}
+	dat, err := json.Marshal(chirps)
+	if err != nil {
+		log.Printf("Error marshaling chirps: %s", err)
+		respondWithError(w, 500, "Failed to marshal chirps")
+		return
+	}
+	w.WriteHeader(200)
+	w.Write(dat)
+	return
+}
+
 
 
 
@@ -273,6 +302,8 @@ mux.HandleFunc("POST /admin/reset", apiCfg.handlerReset)
 mux.HandleFunc("POST /api/users", apiCfg.handlerCreateUser)
 
 mux.HandleFunc("POST /api/chirps", apiCfg.handlerCreateChirp)
+
+mux.HandleFunc("GET /api/chirps", apiCfg.handlerGetChirps)
 
 mux.Handle("/app/", http.StripPrefix("/app", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir(".")))))
 
