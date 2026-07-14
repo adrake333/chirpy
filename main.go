@@ -18,6 +18,7 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/joho/godotenv"
 	"github.com/adrake333/chirpy/internal/database"
+	"github.com/adrake333/chirpy/internal/auth"
 	"github.com/google/uuid"
 
 )
@@ -59,7 +60,8 @@ type Chirp struct {
 }
 
 type userRequest struct {
-	Email	string	`json:"email"`
+	Password	string	`json:"password"`
+	Email		string	`json:"email"`
 }
 
 type chirpRequest struct {
