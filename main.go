@@ -290,6 +290,44 @@ func (cfg *apiConfig) handlerGetOneChirp(w http.ResponseWriter, r *http.Request)
 	return
 }
 
+func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	req := userRequest{}
+	err := decoder.Decode(&req)
+	if err != nil {
+		log.Printf("Error decoding user: %s", err)
+		respondWithError(w, 500, "Something went wrong")
+		return
+	}
+	dbUser, err := cfg.dbQueries.GetUserByEmail(r.Context(), req.Email)
+	if err != nil {
+		log.Print("Incorrect email or password")
+		respondWithError(w, 401, "Incorrect email or password")
+		return
+	}
+	match, err := auth.CheckPasswordHash(req.Password, dbUser.HashedPassword)
+	if err != nil {
+		log.Printf("Incorrect email or password")
+		respondWithError(w, 401, "Incorrect email or password")
+		return
+	}
+	if match == false {
+		log.Printf("Incorrect email or password")
+		respondWithError(w, 401, "Incorrect email or password")
+		return
+	}
+	user := toUser(dbUser)
+	dat, err := json.Marshal(user)
+	if err != nil {
+		log.Printf("Error marshaling user: %s", err)
+		respondWithError(w, 500, "Failed to marshal user")
+		return
+	}
+	w.WriteHeader(200)
+	w.Write(dat)
+	return
+}
+
 
 
 
