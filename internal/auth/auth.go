@@ -1,19 +1,15 @@
 package auth
 
-
-
-
 import (
 	"errors"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/alexedwards/argon2id"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
-
-
-
 
 func HashPassword(password string) (string, error) {
 	hash, err := argon2id.CreateHash(password, argon2id.DefaultParams)
@@ -31,10 +27,10 @@ func CheckPasswordHash(password, hash string) (bool, error) {
 func MakeJWT(userID uuid.UUID, tokenSecret string, expiresIn time.Duration) (string, error) {
 	currentTime := time.Now().UTC()
 	claims := jwt.RegisteredClaims{
-		Issuer: "chirpy-access",
-		IssuedAt: jwt.NewNumericDate(currentTime),
+		Issuer:    "chirpy-access",
+		IssuedAt:  jwt.NewNumericDate(currentTime),
 		ExpiresAt: jwt.NewNumericDate(currentTime.Add(expiresIn)),
-		Subject: userID.String(),
+		Subject:   userID.String(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(tokenSecret))
@@ -56,4 +52,22 @@ func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
 		return uuid.Nil, err
 	}
 	return id, nil
+}
+
+func GetBearerToken(headers http.Header) (string, error) {
+	auth := headers.Get("Authorization")
+	if auth == "" {
+		return "", errors.New("missing authorization header")
+	}
+	var trimAuth string
+	if strings.HasPrefix(auth, "Bearer ") {
+		trimAuth = strings.TrimPrefix(auth, "Bearer ")
+		trimAuth = strings.TrimSpace(trimAuth)
+	} else {
+		return "", errors.New("improper authorization format")
+	}
+	if trimAuth == "" {
+		return "", errors.New("empty bearer token")
+	}
+	return trimAuth, nil
 }

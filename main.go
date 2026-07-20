@@ -1,8 +1,5 @@
 package main
 
-
-
-
 import (
 	"database/sql"
 	"encoding/json"
@@ -15,21 +12,18 @@ import (
 	"sync/atomic"
 	"time"
 
-	_ "github.com/lib/pq"
-	"github.com/joho/godotenv"
-	"github.com/adrake333/chirpy/internal/database"
 	"github.com/adrake333/chirpy/internal/auth"
+	"github.com/adrake333/chirpy/internal/database"
 	"github.com/google/uuid"
-
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 )
 
-
-
-
 type apiConfig struct {
-	fileserverHits		atomic.Int32
-	dbQueries		*database.Queries
-	platform		string
+	fileserverHits atomic.Int32
+	dbQueries      *database.Queries
+	platform       string
+	jwtSecret      string
 }
 
 type requestBody struct {
@@ -45,28 +39,38 @@ type successResponse struct {
 }
 
 type User struct {
-	ID		uuid.UUID	`json:"id"`
-	CreatedAt	time.Time	`json:"created_at"`
-	UpdatedAt	time.Time	`json:"updated_at"`
-	Email		string		`json:"email"`
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email     string    `json:"email"`
 }
 
 type Chirp struct {
-	ID		uuid.UUID	`json:"id"`
-	CreatedAt	time.Time	`json:"created_at"`
-	UpdatedAt	time.Time	`json:"updated_at"`
-	Body		string		`json:"body"`
-	UserID		uuid.UUID	`json:"user_id"`
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Body      string    `json:"body"`
+	UserID    uuid.UUID `json:"user_id"`
 }
 
 type userRequest struct {
-	Password	string	`json:"password"`
-	Email		string	`json:"email"`
+	Password string `json:"password"`
+	Email    string `json:"email"`
+}
+
+type loginRequest struct {
+	userRequest
+	ExpiresInSeconds int `json:"expires_in_seconds"`
+}
+
+type loginResponse struct {
+	User
+	Token string `json:"token"`
 }
 
 type chirpRequest struct {
-	Body	string		`json:"body"`
-	UserID	uuid.UUID	`json:"user_id"`
+	Body   string    `json:"body"`
+	UserID uuid.UUID `json:"user_id"`
 }
 
 func respondWithError(w http.ResponseWriter, code int, msg string) {
@@ -84,20 +88,20 @@ func respondWithError(w http.ResponseWriter, code int, msg string) {
 
 func toUser(dbU database.User) User {
 	return User{
-		ID:		dbU.ID,
-		CreatedAt:	dbU.CreatedAt,
-		UpdatedAt:	dbU.UpdatedAt,
-		Email:		dbU.Email,
+		ID:        dbU.ID,
+		CreatedAt: dbU.CreatedAt,
+		UpdatedAt: dbU.UpdatedAt,
+		Email:     dbU.Email,
 	}
 }
 
 func toChirp(dbC database.Chirp) Chirp {
 	return Chirp{
-		ID:		dbC.ID,
-		CreatedAt:	dbC.CreatedAt,
-		UpdatedAt:	dbC.UpdatedAt,
-		Body:		dbC.Body,
-		UserID:		dbC.UserID,
+		ID:        dbC.ID,
+		CreatedAt: dbC.CreatedAt,
+		UpdatedAt: dbC.UpdatedAt,
+		Body:      dbC.Body,
+		UserID:    dbC.UserID,
 	}
 }
 
@@ -119,6 +123,18 @@ func (cfg *apiConfig) handlerMetrics(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request) {
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		log.Printf("Error retrieving bearer token: %s", err)
+		respondWithError(w, 401, "error retrieving bearer token")
+		return
+	}
+	userID, err := auth.ValidateJWT(token, cfg.jwtSecret)
+	if err != nil {
+		log.Printf("Error validating token: %s", err)
+		respondWithError(w, 401, "unauthorized")
+		return
+	}
 	decoder := json.NewDecoder(r.Body)
 	params := chirpRequest{}
 	err := decoder.Decode(&params)
@@ -134,8 +150,8 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	chirp, err := cfg.dbQueries.CreateChirp(r.Context(), database.CreateChirpParams{
-		Body: cleanedBody,
-		UserID: params.UserID,
+		Body:   cleanedBody,
+		UserID: userID,
 	})
 	if err != nil {
 		log.Printf("Error storing chirp: %s", err)
@@ -203,7 +219,7 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) 
 	}
 	user, err := cfg.dbQueries.CreateUser(r.Context(), database.CreateUserParams{
 		HashedPassword: hashPass,
-		Email: req.Email,
+		Email:          req.Email,
 	})
 	if err != nil {
 		log.Printf("Error creating user: %s", err)
@@ -292,12 +308,17 @@ func (cfg *apiConfig) handlerGetOneChirp(w http.ResponseWriter, r *http.Request)
 
 func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
-	req := userRequest{}
+	req := loginRequest{}
 	err := decoder.Decode(&req)
 	if err != nil {
 		log.Printf("Error decoding user: %s", err)
 		respondWithError(w, 500, "Something went wrong")
 		return
+	}
+	duration := time.Hour
+	requestedDuration := time.Duration(req.ExpiresInSeconds) * time.Second
+	if requestedDuration > 0 && requestedDuration < duration {
+		duration = requestedDuration
 	}
 	dbUser, err := cfg.dbQueries.GetUserByEmail(r.Context(), req.Email)
 	if err != nil {
@@ -316,8 +337,18 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, 401, "Incorrect email or password")
 		return
 	}
+	jwt, err := auth.MakeJWT(dbUser.ID, cfg.jwtSecret, duration)
+	if err != nil {
+		log.Printf("error creating JWT: %s", err)
+		respondWithError(w, 500, "error creating JWT")
+		return
+	}
 	user := toUser(dbUser)
-	dat, err := json.Marshal(user)
+	response := loginResponse{
+		User:  user,
+		Token: jwt,
+	}
+	dat, err := json.Marshal(response)
 	if err != nil {
 		log.Printf("Error marshaling user: %s", err)
 		respondWithError(w, 500, "Failed to marshal user")
@@ -328,64 +359,66 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-
-
-
 func main() {
 
-err := godotenv.Load()
-if err != nil {
-	log.Printf("Error: %s", err)
-	return
-}
+	err := godotenv.Load()
+	if err != nil {
+		log.Printf("Error: %s", err)
+		return
+	}
 
-dbURL := os.Getenv("DB_URL")
+	dbURL := os.Getenv("DB_URL")
 
-platform := os.Getenv("PLATFORM")
+	platform := os.Getenv("PLATFORM")
 
-db, err := sql.Open("postgres", dbURL)
-if err != nil {
-	log.Printf("Error: %s", err)
-	return
-}
+	jwtSecret := os.Getenv("JWT_SECRET")
 
-dbQueries := database.New(db)
+	if jwtSecret == "" {
+		log.Fatal("JWT_SECRET empty")
+	}
 
-apiCfg := apiConfig{
-	dbQueries:	dbQueries,
-	platform:	platform,
-}
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		log.Printf("Error: %s", err)
+		return
+	}
 
-mux := http.NewServeMux()
+	dbQueries := database.New(db)
 
-httpServer := http.Server{
-	Addr:		":8080",
-	Handler:	mux,
-}
+	apiCfg := apiConfig{
+		dbQueries: dbQueries,
+		platform:  platform,
+		jwtSecret: jwtSecret,
+	}
 
-mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(200)
-	w.Write([]byte("OK"))
-})
+	mux := http.NewServeMux()
 
-mux.HandleFunc("GET /admin/metrics", apiCfg.handlerMetrics)
+	httpServer := http.Server{
+		Addr:    ":8080",
+		Handler: mux,
+	}
 
-mux.HandleFunc("POST /admin/reset", apiCfg.handlerReset)
+	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(200)
+		w.Write([]byte("OK"))
+	})
 
-mux.HandleFunc("POST /api/users", apiCfg.handlerCreateUser)
+	mux.HandleFunc("GET /admin/metrics", apiCfg.handlerMetrics)
 
-mux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
+	mux.HandleFunc("POST /admin/reset", apiCfg.handlerReset)
 
-mux.HandleFunc("POST /api/chirps", apiCfg.handlerCreateChirp)
+	mux.HandleFunc("POST /api/users", apiCfg.handlerCreateUser)
 
-mux.HandleFunc("GET /api/chirps", apiCfg.handlerGetChirps)
+	mux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
 
-mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.handlerGetOneChirp)
+	mux.HandleFunc("POST /api/chirps", apiCfg.handlerCreateChirp)
 
-mux.Handle("/app/", http.StripPrefix("/app", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir(".")))))
+	mux.HandleFunc("GET /api/chirps", apiCfg.handlerGetChirps)
 
+	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.handlerGetOneChirp)
 
+	mux.Handle("/app/", http.StripPrefix("/app", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir(".")))))
 
-log.Fatal(httpServer.ListenAndServe())
+	log.Fatal(httpServer.ListenAndServe())
 }
