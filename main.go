@@ -68,6 +68,10 @@ type loginResponse struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
+type refreshResponse struct {
+	Toke	string	`json:"token"`
+}
+
 type chirpRequest struct {
 	Body   string    `json:"body"`
 	UserID uuid.UUID `json:"user_id"`
@@ -168,7 +172,6 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(201)
 	w.Write(dat)
-	return
 }
 
 func validateChirp(body string) (string, error) {
@@ -237,7 +240,6 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(201)
 	w.Write(dat)
-	return
 }
 
 func (cfg *apiConfig) handlerReset(w http.ResponseWriter, r *http.Request) {
@@ -254,7 +256,6 @@ func (cfg *apiConfig) handlerReset(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg.fileserverHits.Store(0)
 	w.WriteHeader(200)
-	return
 }
 
 func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
@@ -277,7 +278,6 @@ func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(200)
 	w.Write(dat)
-	return
 }
 
 func (cfg *apiConfig) handlerGetOneChirp(w http.ResponseWriter, r *http.Request) {
@@ -303,7 +303,6 @@ func (cfg *apiConfig) handlerGetOneChirp(w http.ResponseWriter, r *http.Request)
 	}
 	w.WriteHeader(200)
 	w.Write(dat)
-	return
 }
 
 func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
@@ -362,7 +361,51 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(200)
 	w.Write(dat)
-	return
+}
+
+func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
+	bearer, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, 400, "Failed to retrieve bearer token")
+		return
+	}
+	dbUser, err := cfg.dbQueries.GetUserFromRefreshToken(r.Context(), bearer)
+	if err != nil {
+		respondWithError(w, 401, "Unauthorized")
+		return
+	}
+	jwt, err := auth.MakeJWT(dbUser.ID, cfg.jwtSecret, time.Hour)
+	if err != nil {
+		log.Printf("error creating JWT: %s", err)
+		respondWithError(w, 500, "error creating JWT")
+		return
+	}
+	user := toUser(dbUser)
+	response := refreshResponse{
+		Token: jwt,
+	}
+	dat, err := json.Marshal(response)
+	if err != nil {
+		log.Printf("Error marshaling user: %s", err)
+		respondWithError(w, 500, "Failed to marshal refresh")
+		return
+	}
+	w.WriteHeader(200)
+	w.Write(dat)
+}
+
+func (cfg *apiConfig) handlerRevoke(w http.ResponseWriter, r &http.Request) {
+	bearer, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, 400, "Failed to retrieve bearer token")
+		return
+	}
+	dbUser, err := cfg.dbQueries.GetUserFromRefreshToken(r.Context(), bearer)
+	if err != nil {
+		respondWithError(w, 401, "Unauthorized")
+		return
+	}
+	//revoke sql query here
 }
 
 func main() {
