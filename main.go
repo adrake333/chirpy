@@ -394,18 +394,18 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 	w.Write(dat)
 }
 
-func (cfg *apiConfig) handlerRevoke(w http.ResponseWriter, r &http.Request) {
+func (cfg *apiConfig) handlerRevoke(w http.ResponseWriter, r *http.Request) {
 	bearer, err := auth.GetBearerToken(r.Header)
 	if err != nil {
 		respondWithError(w, 400, "Failed to retrieve bearer token")
 		return
 	}
-	dbUser, err := cfg.dbQueries.GetUserFromRefreshToken(r.Context(), bearer)
+	err = cfg.dbQueries.RevokeRefreshToken(r.Context(), bearer)
 	if err != nil {
-		respondWithError(w, 401, "Unauthorized")
+		respondWithError(w, 500, "Failed to revoke refresh token")
 		return
 	}
-	//revoke sql query here
+	w.WriteHeader(204)
 }
 
 func main() {
