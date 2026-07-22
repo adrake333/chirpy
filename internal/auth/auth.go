@@ -2,6 +2,7 @@ package auth
 
 import (
 	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"strings"

@@ -69,7 +69,7 @@ type loginResponse struct {
 }
 
 type refreshResponse struct {
-	Toke	string	`json:"token"`
+	Token	string	`json:"token"`
 }
 
 type chirpRequest struct {
@@ -337,15 +337,15 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, 500, "error creating JWT")
 		return
 	}
-	refreshToken := MakeRefreshToken()
+	refreshToken := auth.MakeRefreshToken()
 	user := toUser(dbUser)
 	_, err = cfg.dbQueries.CreateRefreshToken(r.Context(), database.CreateRefreshTokenParams{
 		Token: 		refreshToken,
-		UserID:		user.ID
-		ExpiresAt:	now.AddDate(0, 0, 60),
+		UserID:		user.ID,
+		ExpiresAt:	time.Now().UTC().Add(time.Hour * 24 * 60),
 	})
 	if err != nil {
-		respondWithError(w, 500, "Couldn't create refresh token", err)
+		respondWithError(w, 500, "Couldn't create refresh token")
 		return
 	}
 	response := loginResponse{
@@ -380,7 +380,6 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, 500, "error creating JWT")
 		return
 	}
-	user := toUser(dbUser)
 	response := refreshResponse{
 		Token: jwt,
 	}
