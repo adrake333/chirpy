@@ -60,7 +60,6 @@ type userRequest struct {
 
 type loginRequest struct {
 	userRequest
-	ExpiresInSeconds int `json:"expires_in_seconds"`
 }
 
 type loginResponse struct {
@@ -315,11 +314,6 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, 500, "Something went wrong")
 		return
 	}
-	duration := time.Hour
-	requestedDuration := time.Duration(req.ExpiresInSeconds) * time.Second
-	if requestedDuration > 0 && requestedDuration < duration {
-		duration = requestedDuration
-	}
 	dbUser, err := cfg.dbQueries.GetUserByEmail(r.Context(), req.Email)
 	if err != nil {
 		log.Print("Incorrect email or password")
@@ -337,12 +331,14 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, 401, "Incorrect email or password")
 		return
 	}
-	jwt, err := auth.MakeJWT(dbUser.ID, cfg.jwtSecret, duration)
+	jwt, err := auth.MakeJWT(dbUser.ID, cfg.jwtSecret, time.Hour)
 	if err != nil {
 		log.Printf("error creating JWT: %s", err)
 		respondWithError(w, 500, "error creating JWT")
 		return
 	}
+	refreshToken := MakeRefreshToken()
+	//new SQL query
 	user := toUser(dbUser)
 	response := loginResponse{
 		User:  user,
