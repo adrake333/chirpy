@@ -410,7 +410,12 @@ func (cfg *apiConfig) handlerRevoke(w http.ResponseWriter, r *http.Request) {
 func (cfg *apiConfig) handlerUpdateCredentials(w http.ResponseWriter, r *http.Request) {
 	bearer, err := auth.GetBearerToken(r.Header)
 	if err != nil {
-		respondWithError(w, 400, "Failed to retreieve bearer token")
+		respondWithError(w, 401, "Failed to retreieve bearer token")
+		return
+	}
+	userID, err := auth.ValidateJWT(bearer, cfg.jwtSecret)
+	if err != nil {
+		respondWithError(w, 401, "Bad or missing token")
 		return
 	}
 	decoder := json.NewDecoder(r.Body)
@@ -420,7 +425,29 @@ func (cfg *apiConfig) handlerUpdateCredentials(w http.ResponseWriter, r *http.Re
 		respondWithError(w, 500, "Something went wrong")
 		return
 	}
-	//sql query here
+	hashedPass, err := auth.HashPassword(req.Password)
+	if err != nil {
+		respondWithError(w, 400, "Something went wrong")
+		return
+	}
+	dbUser, err := cfg.dbQueries.UpdateCredentials(r.Context(), database.UpdateCredentialsParams{
+		Email:		req.Email,
+		HashedPassword:	hashedPass,
+		ID:		userID,
+	})
+	if err != nil {
+		respondWithError(w, 500, "Failed to update credentials")
+		return
+	}
+	user := toUser(dbUser)
+	dat, err := json.Marshal(user)
+	if err != nil {
+		respondWithError(w, 500, "Failed to marshal user")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	w.Write(dat)
 }
 
 func main() {
@@ -486,7 +513,7 @@ func main() {
 
 	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.handlerGetOneChirp)
 
-	mux.handleFunc("PUT /api/users", apiCfg.handlerUpdateCredentials)
+	mux.HandleFunc("PUT /api/users", apiCfg.handlerUpdateCredentials)
 
 	mux.Handle("/app/", http.StripPrefix("/app", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir(".")))))
 
