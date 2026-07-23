@@ -39,10 +39,11 @@ type successResponse struct {
 }
 
 type User struct {
-	ID        uuid.UUID `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Email     string    `json:"email"`
+	ID        	uuid.UUID 	`json:"id"`
+	CreatedAt 	time.Time 	`json:"created_at"`
+	UpdatedAt 	time.Time 	`json:"updated_at"`
+	Email     	string    	`json:"email"`
+	IsChirpyRed	bool		`json:"is_chirpy_red"`
 }
 
 type Chirp struct {
@@ -77,6 +78,15 @@ type chirpRequest struct {
 	UserID uuid.UUID `json:"user_id"`
 }
 
+type webhookRequest struct {
+	Event	string		`json:"event"`
+	Data	webhookData	`json:"data"`
+}
+
+type webhookData struct {
+	UserID	string	`json:"user_id"`
+}
+
 func respondWithError(w http.ResponseWriter, code int, msg string) {
 	errResp := errorResponse{Error: msg}
 	dat, err := json.Marshal(errResp)
@@ -92,10 +102,11 @@ func respondWithError(w http.ResponseWriter, code int, msg string) {
 
 func toUser(dbU database.User) User {
 	return User{
-		ID:        dbU.ID,
-		CreatedAt: dbU.CreatedAt,
-		UpdatedAt: dbU.UpdatedAt,
-		Email:     dbU.Email,
+		ID:       	dbU.ID,
+		CreatedAt: 	dbU.CreatedAt,
+		UpdatedAt: 	dbU.UpdatedAt,
+		Email:     	dbU.Email,
+		IsChirpyRed:	dbU.IsChirpyRed,
 	}
 }
 
@@ -484,6 +495,31 @@ func (cfg *apiConfig) handlerDeleteChirp(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(204)
 }
 
+func (cfg *apiConfig) handlerMakeRed(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	params := webhookRequest{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		respondWithError(w, 400, "Something went wrong")
+		return
+	}
+	if params.Event != "user.upgraded" {
+		w.WriteHeader(204)
+		return
+	}
+	userID, err := uuid.Parse(params.Data.UserID)
+	if err != nil {
+		respondWithError(w, 400, "Failed to parse uuid")
+		return
+	}
+	_, err = cfg.dbQueries.MakeChirpyRed(r.Context(), userID)
+	if err != nil {
+		w.WriteHeader(404)
+		return
+	}
+	w.WriteHeader(204)
+}
+
 func main() {
 
 	err := godotenv.Load()
@@ -550,6 +586,8 @@ func main() {
 	mux.HandleFunc("PUT /api/users", apiCfg.handlerUpdateCredentials)
 
 	mux.HandleFunc("DELETE /api/chirps/{chirpID}", apiCfg.handlerDeleteChirp)
+
+	mux.HandleFunc("POST /api/polka/webhooks", apiCfg.handlerMakeRed)
 
 	mux.Handle("/app/", http.StripPrefix("/app", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir(".")))))
 
