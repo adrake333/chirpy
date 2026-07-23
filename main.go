@@ -20,10 +20,11 @@ import (
 )
 
 type apiConfig struct {
-	fileserverHits atomic.Int32
-	dbQueries      *database.Queries
-	platform       string
-	jwtSecret      string
+	fileserverHits	atomic.Int32
+	dbQueries	*database.Queries
+	platform	string
+	jwtSecret	string
+	polkaKey	string
 }
 
 type requestBody struct {
@@ -496,9 +497,18 @@ func (cfg *apiConfig) handlerDeleteChirp(w http.ResponseWriter, r *http.Request)
 }
 
 func (cfg *apiConfig) handlerMakeRed(w http.ResponseWriter, r *http.Request) {
+	apiKey, err := auth.GetAPIKey(r.Header)
+	if err != nil {
+		w.WriteHeader(401)
+		return
+	}
+	if apiKey != cfg.polkaKey {
+		w.WriteHeader(401)
+		return
+	}
 	decoder := json.NewDecoder(r.Body)
 	params := webhookRequest{}
-	err := decoder.Decode(&params)
+	err = decoder.Decode(&params)
 	if err != nil {
 		respondWithError(w, 400, "Something went wrong")
 		return
