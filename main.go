@@ -534,6 +534,8 @@ func main() {
 
 	jwtSecret := os.Getenv("JWT_SECRET")
 
+	polkaKey := os.Getenv("POLKA_KEY")
+
 	if jwtSecret == "" {
 		log.Fatal("JWT_SECRET empty")
 	}
@@ -550,6 +552,7 @@ func main() {
 		dbQueries: dbQueries,
 		platform:  platform,
 		jwtSecret: jwtSecret,
+		polkaKey:  polkaKey,
 	}
 
 	mux := http.NewServeMux()
