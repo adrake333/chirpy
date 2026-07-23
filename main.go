@@ -407,6 +407,22 @@ func (cfg *apiConfig) handlerRevoke(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 
+func (cfg *apiConfig) handlerUpdateCredentials(w http.ResponseWriter, r *http.Request) {
+	bearer, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, 400, "Failed to retreieve bearer token")
+		return
+	}
+	decoder := json.NewDecoder(r.Body)
+	req := userRequest{}
+	err = decoder.Decode(&req)
+	if err != nil {
+		respondWithError(w, 500, "Something went wrong")
+		return
+	}
+	//sql query here
+}
+
 func main() {
 
 	err := godotenv.Load()
@@ -469,6 +485,8 @@ func main() {
 	mux.HandleFunc("GET /api/chirps", apiCfg.handlerGetChirps)
 
 	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.handlerGetOneChirp)
+
+	mux.handleFunc("PUT /api/users", apiCfg.handlerUpdateCredentials)
 
 	mux.Handle("/app/", http.StripPrefix("/app", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir(".")))))
 
