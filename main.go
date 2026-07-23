@@ -515,6 +515,8 @@ func main() {
 
 	mux.HandleFunc("PUT /api/users", apiCfg.handlerUpdateCredentials)
 
+	mux.HandleFunc("DELETE /api/chirps/{chirpID}", apiCfg.handlerDeleteChirp)
+
 	mux.Handle("/app/", http.StripPrefix("/app", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir(".")))))
 
 	log.Fatal(httpServer.ListenAndServe())
