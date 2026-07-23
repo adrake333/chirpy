@@ -476,7 +476,7 @@ func (cfg *apiConfig) handlerDeleteChirp(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, 403, "Unauthorized")
 		return
 	}
-	_, err := cfg.dbQueries.DeleteChirp(r.Context(), chirpUUID)
+	err = cfg.dbQueries.DeleteChirp(r.Context(), chirpUUID)
 	if err != nil {
 		respondWithError(w, 404, "Failed to find chirp")
 		return
