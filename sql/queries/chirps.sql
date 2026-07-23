@@ -24,7 +24,6 @@ SELECT * FROM chirps WHERE id = $1;
 
 
 
--- name: DeleteChirp :one
+-- name: DeleteChirp :exec
 DELETE FROM chirps
-WHERE id = $1 AND user_id = $2
-RETURNING *;
+WHERE id = $1;

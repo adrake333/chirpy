@@ -450,6 +450,40 @@ func (cfg *apiConfig) handlerUpdateCredentials(w http.ResponseWriter, r *http.Re
 	w.Write(dat)
 }
 
+func (cfg *apiConfig) handlerDeleteChirp(w http.ResponseWriter, r *http.Request) {
+	idString := r.PathValue("chirpID")
+	chirpUUID, err := uuid.Parse(idString)
+	if err != nil {
+		respondWithError(w, 400, "Failed to parse uuid")
+		return
+	}
+	bearer, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, 401, "Failed to retrieve bearer token")
+		return
+	}
+	userID, err := auth.ValidateJWT(bearer, cfg.jwtSecret)
+	if err != nil {
+		respondWithError(w, 401, "Unauthorized")
+		return
+	}
+	dbChirp, err := cfg.dbQueries.GetOneChirp(r.Context(), chirpUUID)
+	if err != nil {
+		respondWithError(w, 404, "Failed to find chirp")
+		return
+	}
+	if dbChirp.UserID != userID {
+		respondWithError(w, 403, "Unauthorized")
+		return
+	}
+	_, err := cfg.dbQueries.DeleteChirp(r.Context(), chirpUUID)
+	if err != nil {
+		respondWithError(w, 404, "Failed to find chirp")
+		return
+	}
+	w.WriteHeader(204)
+}
+
 func main() {
 
 	err := godotenv.Load()
