@@ -272,15 +272,30 @@ func (cfg *apiConfig) handlerReset(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
 	dbchirps, err := cfg.dbQueries.GetChirps(r.Context())
-	var chirps []Chirp
 	if err != nil {
 		log.Printf("Error getting chirps: %s", err)
 		respondWithError(w, 500, "Failed to retrieve chirps")
 		return
 	}
-	for _, dbchirp := range dbchirps {
-		chirp := toChirp(dbchirp)
-		chirps = append(chirps, chirp)
+	s := r.URL.Query().Get("author_id")
+	sUUID, err := uuid.Parse(s)
+	if err != nil {
+		respondWithError(w, 400, "Failed to parse uuid")
+		return
+	}
+	var chirps []Chirp
+	if s != "" {
+		for _, dbchirp := range dbchirps {
+			if sUUID == dbchirp.UserID {
+				chirp := toChirp(dbchirp)
+				chirps = append(chirps, chirp)
+			}
+		}
+	} else {
+		for _, dbchirp := range dbchirps {
+			chirp := toChirp(dbchirp)
+			chirps = append(chirps, chirp)
+		}
 	}
 	dat, err := json.Marshal(chirps)
 	if err != nil {
