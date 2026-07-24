@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -278,13 +279,13 @@ func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s := r.URL.Query().Get("author_id")
-	sUUID, err := uuid.Parse(s)
-	if err != nil {
-		respondWithError(w, 400, "Failed to parse uuid")
-		return
-	}
 	var chirps []Chirp
 	if s != "" {
+		sUUID, err := uuid.Parse(s)
+		if err != nil {
+			respondWithError(w, 400, "Failed to parse uuid")
+			return
+		}
 		for _, dbchirp := range dbchirps {
 			if sUUID == dbchirp.UserID {
 				chirp := toChirp(dbchirp)
@@ -296,6 +297,12 @@ func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
 			chirp := toChirp(dbchirp)
 			chirps = append(chirps, chirp)
 		}
+	}
+	sorted := r.URL.Query().Get("sort")
+	if sorted == "desc" {
+		sort.Slice(chirps, func(i, j int) bool {
+			return chirps[i].CreatedAt.After(chirps[j].CreatedAt)
+		})
 	}
 	dat, err := json.Marshal(chirps)
 	if err != nil {
